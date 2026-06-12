@@ -1,0 +1,1100 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark light">
+<title>Zestátnění ČEZ — kalkulačka výkupní ceny akcie</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Spline+Sans:wght@300;400;500;600;700&family=Spline+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0f1115;
+    --bg-raise: #161920;
+    --panel: #1a1e26;
+    --panel-edge: #272c37;
+    --edge-hover: #353b49;
+    --track: #2a2f3a;
+    --dash: #232834;
+    --pie-rest: #262b35;
+    --dot: #232833;
+    --ink: #ece9e2;
+    --ink-dim: #9aa1ad;
+    --ink-faint: #5d646f;
+    --accent: #ff6a13;          /* CEZ orange */
+    --accent-soft: rgba(255, 106, 19, 0.14);
+    --accent-deep: #c84e08;
+    --gold: #f4b860;
+    --teal: #4fd1a5;
+    --red: #ff5d5d;
+    --pos: #3ecf8e;
+    --neg: #ff5d5d;
+    --sans: "Spline Sans", -apple-system, sans-serif;
+    --mono: "Spline Sans Mono", ui-monospace, SFMono-Regular, monospace;
+  }
+  html.light {
+    color-scheme: light;
+    --bg: #f3f1ea;
+    --bg-raise: #faf8f3;
+    --panel: #fdfcf9;
+    --panel-edge: #e0dbcf;
+    --edge-hover: #cdc6b6;
+    --track: #e3ded2;
+    --dash: #e5e0d4;
+    --pie-rest: #e9e4d8;
+    --dot: #ddd7c8;
+    --ink: #20232a;
+    --ink-dim: #5b626c;
+    --ink-faint: #8d929b;
+    --accent: #e85c00;
+    --accent-soft: rgba(232, 92, 0, 0.09);
+    --accent-deep: #c84e08;
+    --gold: #a87410;
+    --teal: #14805d;
+    --red: #d23a3a;
+    --pos: #178a55;
+    --neg: #d23a3a;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-weight: 300;
+    line-height: 1.55;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── atmosphere: dotted grid + top glow + grain ───────────────── */
+  .atmosphere {
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background-image: radial-gradient(circle, var(--dot) 1px, transparent 1px);
+    background-size: 26px 26px;
+    mask-image: linear-gradient(to bottom, rgba(0,0,0,.7), rgba(0,0,0,.25) 60%, transparent);
+    -webkit-mask-image: linear-gradient(to bottom, rgba(0,0,0,.7), rgba(0,0,0,.25) 60%, transparent);
+  }
+  .glow {
+    position: fixed; z-index: 0; pointer-events: none;
+    top: -340px; left: 50%; transform: translateX(-50%);
+    width: 1100px; height: 640px;
+    background: radial-gradient(ellipse at center, rgba(255,106,19,.13), transparent 62%);
+  }
+  .grain {
+    position: fixed; inset: 0; z-index: 50; pointer-events: none; opacity: .05;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.6'/%3E%3C/svg%3E");
+  }
+  html.light .glow { background: radial-gradient(ellipse at center, rgba(232,92,0,.08), transparent 62%); }
+  html.light .grain { opacity: .035; }
+
+  .theme-btn {
+    position: fixed; top: 14px; right: 14px; z-index: 60;
+    width: 36px; height: 36px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--bg-raise); color: var(--ink-dim);
+    border: 1px solid var(--panel-edge); cursor: pointer;
+    font-size: 15px; line-height: 1; transition: all .2s;
+  }
+  .theme-btn:hover { color: var(--accent); border-color: var(--accent-deep); transform: rotate(15deg); }
+
+  .wrap {
+    position: relative; z-index: 1;
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 40px 28px 80px;
+  }
+
+  /* ── entrance choreography ────────────────────────────────────── */
+  @keyframes rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+  .rise { opacity: 0; animation: rise .7s cubic-bezier(.22,.8,.3,1) forwards; }
+  .d1 { animation-delay: .05s } .d2 { animation-delay: .15s } .d3 { animation-delay: .25s }
+  .d4 { animation-delay: .35s } .d5 { animation-delay: .45s } .d6 { animation-delay: .55s }
+  .d7 { animation-delay: .65s }
+
+  /* ── masthead ─────────────────────────────────────────────────── */
+  header {
+    padding-bottom: 26px; margin-bottom: 34px;
+    border-bottom: 1px solid var(--panel-edge);
+  }
+  .head-top {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    gap: 24px;
+  }
+  @media (max-width: 720px) {
+    .head-top { flex-direction: column-reverse; }
+    .quote { width: 100%; }
+  }
+  .kicker {
+    font-family: var(--mono); font-size: 11px; font-weight: 500;
+    letter-spacing: .22em; text-transform: uppercase; color: var(--accent);
+    display: flex; align-items: center; gap: 10px; margin-bottom: 14px;
+  }
+  .kicker::before { content: ""; width: 26px; height: 1px; background: var(--accent); }
+  h1 {
+    font-family: var(--sans); font-weight: 600; font-size: clamp(32px, 5vw, 46px);
+    line-height: 1.12; letter-spacing: -.02em;
+  }
+  h1 em { font-style: normal; color: var(--gold); }
+  .sub { margin-top: 18px; color: var(--ink-dim); font-size: 15px; }
+  .sub a { color: var(--ink-dim); text-decoration-color: var(--ink-faint); text-underline-offset: 3px; }
+  .sub a:hover { color: var(--accent); }
+
+  /* ── live quote chip ──────────────────────────────────────────── */
+  .quote {
+    flex-shrink: 0; min-width: 218px;
+    background: var(--bg-raise); border: 1px solid var(--panel-edge);
+    border-radius: 12px; padding: 16px 18px 14px;
+  }
+  .quote-label {
+    font-family: var(--mono); font-size: 10px; font-weight: 500; letter-spacing: .18em;
+    text-transform: uppercase; color: var(--ink-faint);
+    display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  }
+  .pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--ink-faint); }
+  .pulse.live { background: var(--pos); box-shadow: 0 0 0 0 rgba(62,207,142,.5); animation: pulse 2.2s infinite; }
+  .pulse.err { background: var(--red); }
+  .pulse.manual { background: var(--gold); }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(62,207,142,.45) } 70% { box-shadow: 0 0 0 8px rgba(62,207,142,0) } 100% { box-shadow: 0 0 0 0 rgba(62,207,142,0) } }
+  .quote-price {
+    font-family: var(--mono); font-size: 30px; font-weight: 600;
+    font-variant-numeric: tabular-nums; margin-top: 6px; line-height: 1.15;
+  }
+  .quote-price small { font-size: 14px; font-weight: 400; color: var(--ink-dim); margin-left: 4px; }
+  .quote-meta { font-size: 11.5px; color: var(--ink-faint); margin-top: 3px; min-height: 17px; }
+  .quote-actions { display: flex; gap: 8px; margin-top: 11px; }
+  .qbtn {
+    flex: 1; font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em;
+    background: transparent; color: var(--ink-dim);
+    border: 1px solid var(--panel-edge); border-radius: 7px;
+    padding: 5px 8px; cursor: pointer; transition: all .18s;
+  }
+  .qbtn:hover { color: var(--accent); border-color: var(--accent-deep); }
+  .quote-edit { display: none; margin-top: 11px; gap: 8px; }
+  .quote-edit.open { display: flex; }
+  .quote-edit input {
+    flex: 1; width: 90px; background: var(--bg); color: var(--ink);
+    font-family: var(--mono); font-size: 14px;
+    border: 1px solid var(--panel-edge); border-radius: 7px; padding: 5px 10px; outline: none;
+  }
+  .quote-edit input:focus { border-color: var(--accent); }
+
+  /* ── hero result: two plain cards ─────────────────────────────── */
+  .hero {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 0;
+    background: var(--panel); border: 1px solid var(--panel-edge);
+    border-radius: 14px; margin-bottom: 26px;
+  }
+  .hero-col { padding: 24px 26px 22px; min-width: 0; }
+  .hero-col + .hero-col { border-left: 1px dashed var(--dash); }
+  @media (max-width: 720px) {
+    .hero { grid-template-columns: 1fr; }
+    .hero-col + .hero-col { border-left: none; border-top: 1px dashed var(--dash); }
+  }
+  .hero-label {
+    font-family: var(--mono); font-size: 9.5px; font-weight: 500; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--ink-faint); margin-bottom: 10px;
+  }
+  .hero-value {
+    font-family: var(--mono); font-weight: 600; font-size: clamp(34px, 4.5vw, 46px); line-height: 1;
+    font-variant-numeric: tabular-nums; letter-spacing: -.02em; color: var(--ink);
+  }
+  .hero-value .czk { font-size: .42em; color: var(--accent); font-weight: 500; margin-left: 6px; }
+  .hero-value.gen { color: var(--gold); }
+  .hero-value.gen .czk { color: var(--gold); opacity: .75; }
+  .hero-value.gen.neg { color: var(--red); }
+  .hero-breakdown {
+    margin-top: 10px; font-family: var(--mono); font-size: 12.5px;
+    font-variant-numeric: tabular-nums; color: var(--ink-dim);
+  }
+  .hero-breakdown b { color: var(--ink); font-weight: 600; }
+
+  /* ── section headings ─────────────────────────────────────────── */
+  .sect {
+    font-family: var(--mono); font-size: 11px; font-weight: 500; letter-spacing: .22em;
+    text-transform: uppercase; color: var(--ink-faint);
+    display: flex; align-items: center; gap: 14px; margin: 38px 0 18px;
+  }
+  .sect::after { content: ""; flex: 1; height: 1px; background: var(--panel-edge); }
+  .sect b { color: var(--accent); font-weight: 600; }
+
+  /* ── sliders ──────────────────────────────────────────────────── */
+  .controls { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  @media (max-width: 860px) { .controls { grid-template-columns: 1fr; } }
+  .ctl {
+    background: var(--panel); border: 1px solid var(--panel-edge);
+    border-radius: 14px; padding: 22px 22px 18px;
+    transition: border-color .25s;
+  }
+  .ctl:hover { border-color: var(--edge-hover); }
+  .ctl-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+  .ctl-title { font-size: 14.5px; font-weight: 500; color: var(--ink); }
+  .ctl-title span { display: block; font-size: 12px; font-weight: 300; color: var(--ink-faint); margin-top: 2px; }
+  .ctl-value {
+    font-family: var(--mono); font-size: 26px; font-weight: 600; color: var(--accent);
+    font-variant-numeric: tabular-nums; white-space: nowrap;
+  }
+  .ctl-value small { font-size: 13px; color: var(--ink-dim); font-weight: 400; }
+
+  input[type=range] {
+    -webkit-appearance: none; appearance: none;
+    width: 100%; height: 30px; background: transparent; cursor: pointer; margin-top: 14px;
+  }
+  input[type=range]::-webkit-slider-runnable-track {
+    height: 5px; border-radius: 3px;
+    background: linear-gradient(90deg, var(--accent) var(--fill, 50%), var(--track) var(--fill, 50%));
+  }
+  input[type=range]::-moz-range-track { height: 5px; border-radius: 3px; background: var(--track); }
+  input[type=range]::-moz-range-progress { height: 5px; border-radius: 3px; background: var(--accent); }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 22px; height: 22px; border-radius: 50%; margin-top: -8.5px;
+    background: var(--ink); border: 5px solid var(--accent);
+    box-shadow: 0 2px 12px rgba(255,106,19,.45);
+    transition: transform .15s;
+  }
+  input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.12); }
+  input[type=range]::-moz-range-thumb {
+    width: 12px; height: 12px; border-radius: 50%;
+    background: var(--ink); border: 5px solid var(--accent);
+    box-shadow: 0 2px 12px rgba(255,106,19,.45);
+  }
+  .ctl-scale {
+    display: flex; justify-content: space-between;
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .06em;
+    color: var(--ink-faint); margin-top: 6px;
+  }
+  .ctl-scale .lo { color: var(--teal); } .ctl-scale .hi { color: var(--gold); }
+
+  /* ── scenario presets ─────────────────────────────────────────── */
+  .presets { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 18px; }
+  @media (max-width: 720px) { .presets { grid-template-columns: repeat(2, 1fr); } }
+  .preset {
+    background: var(--bg-raise); border: 1px solid var(--panel-edge); border-radius: 10px;
+    padding: 11px 8px 10px; text-align: center; cursor: pointer;
+    font-family: var(--mono); transition: all .2s;
+  }
+  .preset:hover { border-color: var(--accent-deep); transform: translateY(-2px); }
+  .preset.active { border-color: var(--accent); background: var(--accent-soft); }
+  .preset-name { font-size: 9.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-faint); }
+  .preset.active .preset-name { color: var(--accent); }
+  .preset-params { font-size: 10px; color: var(--ink-dim); margin-top: 4px; }
+  .preset-price { font-size: 15px; font-weight: 600; color: var(--ink); margin-top: 3px; font-variant-numeric: tabular-nums; }
+
+  /* ── pie: what's inside today's price ─────────────────────────── */
+  .pie-box {
+    background: var(--panel); border: 1px solid var(--panel-edge);
+    border-radius: 14px; padding: 26px 28px;
+    display: flex; align-items: center; gap: 34px;
+  }
+  @media (max-width: 720px) { .pie-box { flex-direction: column; gap: 22px; } }
+  @property --share { syntax: "<percentage>"; inherits: false; initial-value: 0%; }
+  .pie-wrap { position: relative; width: 190px; height: 190px; flex-shrink: 0; }
+  .pie {
+    width: 100%; height: 100%; border-radius: 50%;
+    background: conic-gradient(from -90deg, var(--gold) 0 var(--share), var(--pie-rest) var(--share) 100%);
+    transition: --share .5s cubic-bezier(.25,.9,.3,1);
+  }
+  .pie::after {
+    content: ""; position: absolute; inset: 34px; border-radius: 50%;
+    background: var(--panel); border: 1px solid var(--panel-edge);
+  }
+  .pie-center {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; z-index: 1; text-align: center;
+  }
+  .pie-center b { font-family: var(--mono); font-size: 26px; font-weight: 600; color: var(--gold); font-variant-numeric: tabular-nums; }
+  .pie-center small { font-family: var(--mono); font-size: 9.5px; letter-spacing: .16em; text-transform: uppercase; color: var(--ink-faint); margin-top: 2px; }
+  .pie-side { flex: 1; }
+  .pie-legend { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+  .pl-row {
+    display: flex; align-items: baseline; gap: 10px;
+    font-size: 13.5px; color: var(--ink-dim);
+  }
+  .pl-dot { width: 9px; height: 9px; border-radius: 3px; flex-shrink: 0; align-self: center; }
+  .pl-dot.dszs { background: var(--gold); }
+  .pl-dot.gen { background: var(--pie-rest); border: 1px solid var(--edge-hover); }
+  .pl-row b { font-family: var(--mono); font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  /* paradox readout: implied generation multiple */
+  .paradox {
+    margin-top: 16px; padding: 14px 16px;
+    background: var(--bg-raise); border: 1px solid var(--panel-edge); border-left: 3px solid var(--teal);
+    border-radius: 0 11px 11px 0;
+  }
+  .paradox .px-k { font-family: var(--mono); font-size: 9.5px; letter-spacing: .16em; text-transform: uppercase; color: var(--ink-faint); }
+  .paradox .px-v {
+    font-family: var(--mono); font-size: 24px; font-weight: 600; color: var(--teal);
+    font-variant-numeric: tabular-nums; margin-top: 3px;
+  }
+  .paradox .px-v small { font-size: 13px; color: var(--ink-dim); font-weight: 400; }
+  .paradox .px-buy {
+    font-size: 12.5px; color: var(--ink-dim); margin-top: 7px; padding-top: 7px;
+    border-top: 1px dashed var(--dash); font-variant-numeric: tabular-nums;
+  }
+  .paradox .px-buy b { font-family: var(--mono); font-weight: 600; color: var(--accent); }
+  .paradox .px-d { font-size: 12px; color: var(--ink-faint); margin-top: 6px; line-height: 1.6; }
+  .paradox .px-d em { color: var(--teal); font-style: normal; }
+  .paradox.neg { border-left-color: var(--red); }
+  .paradox.neg .px-v { color: var(--red); }
+
+  /* ── per-share waterfall ──────────────────────────────────────── */
+  .water {
+    background: var(--panel); border: 1px solid var(--panel-edge);
+    border-radius: 14px; padding: 24px 24px 20px;
+  }
+  .wrow { display: grid; grid-template-columns: 200px 1fr 110px; gap: 14px; align-items: center; padding: 9px 0; }
+  @media (max-width: 720px) { .wrow { grid-template-columns: 124px 1fr 92px; gap: 9px; } }
+  .wrow + .wrow { border-top: 1px dashed var(--dash); }
+  .wlabel { font-size: 13px; color: var(--ink-dim); line-height: 1.3; }
+  .wlabel b { display: block; color: var(--ink); font-weight: 500; }
+  .wbar-track { height: 26px; position: relative; }
+  .wbar {
+    position: absolute; top: 0; bottom: 0; left: 0; border-radius: 5px; min-width: 3px;
+    transition: width .45s cubic-bezier(.25,.9,.3,1), left .45s cubic-bezier(.25,.9,.3,1);
+  }
+  .wbar.dszs  { background: linear-gradient(90deg, #b98430, var(--gold)); }
+  .wbar.gen   { background: linear-gradient(90deg, #2c8f72, var(--teal)); }
+  .wbar.mkt   { background: linear-gradient(90deg, #6e747f, #aab1bd); }
+  html.light .wbar.mkt { background: linear-gradient(90deg, #707682, #99a0ab); }
+  html.light .wbar.dszs { background: linear-gradient(90deg, #c08820, #daa53c); }
+  .wbar.prem  {
+    background: repeating-linear-gradient(135deg, rgba(255,106,19,.9) 0 5px, rgba(255,106,19,.4) 5px 10px);
+  }
+  .wbar.final { background: linear-gradient(90deg, var(--accent-deep), var(--accent)); box-shadow: 0 0 18px rgba(255,106,19,.3); }
+  .wval {
+    font-family: var(--mono); font-size: 15.5px; font-weight: 600; text-align: right;
+    font-variant-numeric: tabular-nums; white-space: nowrap;
+  }
+  .wval small { display: block; font-size: 10px; font-weight: 400; color: var(--ink-faint); letter-spacing: .05em; }
+  .wval.c-dszs { color: var(--gold); } .wval.c-gen { color: var(--teal); }
+  .wval.c-mkt { color: #aab1bd; } .wval.c-prem { color: var(--accent); }
+  html.light .wval.c-mkt { color: #6e747f; }
+  .wval.c-final { color: var(--accent); font-size: 17px; }
+
+  /* ── financing check ──────────────────────────────────────────── */
+  .fin {
+    background: var(--panel); border: 1px solid var(--panel-edge);
+    border-radius: 14px; padding: 24px 28px;
+  }
+  .fin-rows { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 720px) { .fin-rows { grid-template-columns: 1fr; } }
+  .fin-cell {
+    background: var(--bg-raise); border: 1px solid var(--panel-edge); border-radius: 11px;
+    padding: 14px 16px;
+  }
+  .fin-cell .fk { font-family: var(--mono); font-size: 9.5px; letter-spacing: .16em; text-transform: uppercase; color: var(--ink-faint); }
+  .fin-cell .fv { font-family: var(--mono); font-size: 21px; font-weight: 600; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .fin-cell .fd { font-size: 11.5px; color: var(--ink-faint); margin-top: 2px; }
+  .fv.c-cash { color: var(--teal); } .fv.c-cost { color: var(--accent); }
+  .cov-track {
+    height: 12px; border-radius: 6px; background: var(--pie-rest); margin-top: 20px;
+    position: relative; overflow: hidden;
+  }
+  .cov-bar {
+    position: absolute; top: 0; bottom: 0; left: 0; border-radius: 6px;
+    transition: width .45s cubic-bezier(.25,.9,.3,1), background .3s;
+  }
+  .cov-line {
+    display: flex; justify-content: space-between; align-items: baseline; margin-top: 9px;
+    font-family: var(--mono); font-size: 12px; color: var(--ink-faint);
+  }
+  .cov-line b { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .fin-verdict { margin-top: 12px; font-size: 13px; color: var(--ink-dim); line-height: 1.6; }
+  .fin-verdict em { font-style: normal; font-family: var(--mono); font-size: 12.5px; }
+  .fin-verdict.ok em { color: var(--pos); }
+  .fin-verdict.gap em { color: var(--gold); }
+
+  /* ── price axis ───────────────────────────────────────────────── */
+  .axis-box {
+    background: var(--panel); border: 1px solid var(--panel-edge);
+    border-radius: 14px; padding: 26px 28px 56px;
+  }
+  .band-range { font-family: var(--mono); font-size: 12px; color: var(--ink-dim); }
+  .axis { position: relative; height: 64px; margin-top: 34px; }
+  .axis-line { position: absolute; left: 0; right: 0; top: 38px; height: 2px; background: var(--track); border-radius: 1px; }
+  .axis-band {
+    position: absolute; top: 33px; height: 12px; border-radius: 6px;
+    background: rgba(154,161,173,.13); border: 1px dashed rgba(154,161,173,.3);
+    transition: left .45s, width .45s;
+  }
+  .marker { position: absolute; top: 0; transform: translateX(-50%); text-align: center; transition: left .45s cubic-bezier(.25,.9,.3,1); }
+  .marker .tick { width: 2px; height: 24px; margin: 14px auto 0; border-radius: 1px; }
+  .marker .mlabel {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .marker .mprice { font-family: var(--mono); font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .marker.mkt .tick { background: var(--ink); } .marker.mkt { color: var(--ink); }
+  .marker.mkt .mlabel { color: var(--ink-dim); }
+  .marker.buyout .tick { background: var(--accent); box-shadow: 0 0 12px rgba(255,106,19,.6); }
+  .marker.buyout { color: var(--accent); }
+  .marker.buyout .mprice { font-size: 15px; }
+  .marker.below { top: auto; bottom: -46px; }
+  .marker.below .tick { margin: 0 auto 4px; }
+
+  /* ── assumptions & footer ─────────────────────────────────────── */
+  .assume { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  @media (max-width: 720px) { .assume { grid-template-columns: repeat(2, 1fr); } }
+  .acard {
+    background: var(--bg-raise); border: 1px solid var(--panel-edge); border-radius: 11px;
+    padding: 14px 15px;
+  }
+  .acard .ak { font-family: var(--mono); font-size: 9.5px; letter-spacing: .16em; text-transform: uppercase; color: var(--ink-faint); }
+  .acard .av { font-family: var(--mono); font-size: 17px; font-weight: 600; margin-top: 5px; font-variant-numeric: tabular-nums; }
+  .acard .ad { font-size: 11.5px; color: var(--ink-faint); margin-top: 3px; line-height: 1.4; }
+
+  .method {
+    margin-top: 18px; padding: 18px 20px;
+    background: var(--bg-raise); border-left: 3px solid var(--accent);
+    border-radius: 0 11px 11px 0;
+    font-size: 13.5px; color: var(--ink-dim);
+  }
+  .method code {
+    font-family: var(--mono); font-size: 12px; color: var(--gold);
+    background: rgba(244,184,96,.08); padding: 1px 6px; border-radius: 4px;
+  }
+
+  footer {
+    margin-top: 44px; padding-top: 22px; border-top: 1px solid var(--panel-edge);
+    font-size: 12px; color: var(--ink-faint); line-height: 1.7;
+  }
+  .formulas {
+    margin-bottom: 18px; padding: 16px 20px 18px;
+    background: var(--bg-raise); border: 1px solid var(--panel-edge); border-radius: 11px;
+    font-family: var(--mono); font-size: 12px; line-height: 1.8;
+    color: var(--ink-dim); overflow-x: auto;
+  }
+  .formulas .fx-t {
+    font-size: 9.5px; letter-spacing: .18em; text-transform: uppercase;
+    color: var(--ink-faint); margin-bottom: 12px;
+  }
+  .formulas b { color: var(--gold); font-weight: 600; }
+  .formulas i { color: var(--teal); font-style: normal; }
+  .formulas em { color: var(--accent); font-style: normal; font-weight: 600; }
+  .fx-grid {
+    display: grid; grid-template-columns: max-content 1fr;
+    column-gap: 10px; row-gap: 5px; align-items: baseline;
+  }
+  .fx-n { white-space: nowrap; }
+  .fx-note { grid-column: 2; font-size: 11px; color: var(--ink-faint); }
+  .fx-c { color: var(--ink-faint); }
+  .fx-gap { margin-top: 10px; }
+  @media (max-width: 720px) {
+    .fx-grid { grid-template-columns: 1fr; row-gap: 2px; }
+    .fx-n { margin-top: 10px; }
+    .fx-note { grid-column: 1; }
+    .fx-gap { margin-top: 10px; }
+  }
+  footer a { color: var(--ink-dim); text-underline-offset: 3px; }
+  footer a:hover { color: var(--accent); }
+  .disclaimer {
+    margin-top: 10px; font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: .04em; color: var(--ink-faint); opacity: .85;
+  }
+</style>
+</head>
+<body>
+
+<div class="atmosphere"></div>
+<div class="glow"></div>
+<div class="grain"></div>
+
+<button class="theme-btn" id="themeBtn" title="Přepnout světlý / tmavý motiv">☀</button>
+
+<div class="wrap">
+
+  <header class="rise d1">
+    <div class="head-top">
+    <div>
+      <div class="kicker">Interaktivní kalkulačka · červen 2026</div>
+      <h1>Zestátnění ČEZ:<br>co dostane <em>minoritní akcionář</em><br>a za kolik získá výrobu <em>stát</em>?</h1>
+    </div>
+    <div class="quote">
+      <div class="quote-label">
+        <span>CEZ · BCPP</span>
+        <span class="pulse" id="pulse"></span>
+      </div>
+      <div class="quote-price"><span id="qprice">—</span><small>Kč</small></div>
+      <div class="quote-meta" id="qmeta">načítám kurz…</div>
+      <div class="quote-actions">
+        <button class="qbtn" id="btnRefresh" title="Znovu načíst kurz">↻ obnovit</button>
+        <button class="qbtn" id="btnEdit" title="Zadat kurz ručně">✎ ručně</button>
+      </div>
+      <div class="quote-edit" id="editRow">
+        <input type="number" id="editInput" min="1" step="1" placeholder="Kč">
+        <button class="qbtn" id="btnApply">použít</button>
+      </div>
+    </div>
+    </div>
+    <p class="sub">
+      ČEZ vyčlení distribuční a zákaznickou část (DSZS) a prodejem 49&nbsp;% odemkne její
+      ocenění. Nastav, za kolik se DSZS ocení — a&nbsp;kalkulačka ukáže, jak málo z&nbsp;dnešního
+      kurzu zbývá na celou výrobní část. Výkupní nabídka minoritářům se pak modeluje jako
+      kurz + motivační prémie, stejně jako u&nbsp;francouzské EDF.
+      Data: <a href="https://ekonomickydenik.cz/zakaznicky-cez-400-az-530-miliard/" target="_blank"
+      rel="noopener">Ekonomický deník</a> a další zdroje.
+    </p>
+  </header>
+
+  <section class="hero rise d2">
+    <div class="hero-col">
+      <div class="hero-label">Modelová výkupní cena akcie</div>
+      <div class="hero-value"><span id="buyout">—</span><span class="czk">Kč</span></div>
+      <div class="hero-breakdown" id="breakdown">—</div>
+    </div>
+    <div class="hero-col">
+      <div class="hero-label">Stát tím kupuje výrobní část za</div>
+      <div class="hero-value gen" id="genValue"><span id="paradoxVal">—</span><span class="czk">× EBITDA</span></div>
+      <div class="hero-breakdown" id="paradoxSub">—</div>
+    </div>
+  </section>
+
+  <div class="sect rise d3">01 · <b>Parametry modelu</b></div>
+
+  <section class="controls rise d3">
+    <div class="ctl">
+      <div class="ctl-head">
+        <div class="ctl-title">Ocenění DSZS<span>násobek EBITDA 53 mld; 10× standard distribuce</span></div>
+        <div class="ctl-value"><span id="mVal">10,0</span><small>×</small></div>
+      </div>
+      <input type="range" id="mSlider" min="6" max="12" step="0.1" value="10">
+      <div class="ctl-scale"><span class="lo">6× tržní skepse</span><span class="hi">12× optimistický</span></div>
+    </div>
+    <div class="ctl">
+      <div class="ctl-head">
+        <div class="ctl-title">Přenos dluhu na DSZS<span>násobek EBITDA převedený s firmou</span></div>
+        <div class="ctl-value"><span id="dVal">1,6</span><small>×</small></div>
+      </div>
+      <input type="range" id="dSlider" min="1.6" max="2.6" step="0.1" value="1.6">
+      <div class="ctl-scale"><span class="lo">1,6× finanční</span><span class="hi">2,6× vč. jader. rezerv</span></div>
+    </div>
+    <div class="ctl">
+      <div class="ctl-head">
+        <div class="ctl-title">Motivační prémie<span>pobídka k prodeji nad aktuální kurz</span></div>
+        <div class="ctl-value">+<span id="pVal">20</span><small>%</small></div>
+      </div>
+      <input type="range" id="pSlider" min="0" max="55" step="1" value="20">
+      <div class="ctl-scale"><span class="lo">0 % žádná</span><span class="hi">53 % jako EDF</span></div>
+    </div>
+  </section>
+
+  <div class="presets rise d4" id="presets"></div>
+
+  <div class="sect rise d5">02 · <b>Co je schované v dnešním kurzu</b></div>
+
+  <section class="pie-box rise d5">
+    <div class="pie-wrap">
+      <div class="pie" id="pie"></div>
+      <div class="pie-center"><b id="piePct">—</b><small>kurzu = DSZS</small></div>
+    </div>
+    <div class="pie-side">
+      <div style="font-size:14px;color:var(--ink)">Rozklad aktuální ceny akcie <span id="piePrice" style="font-family:var(--mono);color:var(--ink-dim)">—</span></div>
+      <div class="pie-legend">
+        <div class="pl-row"><span class="pl-dot dszs"></span><span>Hodnota DSZS na akcii (dle sliderů)</span><b id="pieDszs">—</b></div>
+        <div class="pl-row"><span class="pl-dot gen"></span><span>Zbytek na výrobu a ostatní (dopočet)</span><b id="pieGen">—</b></div>
+      </div>
+      <div class="paradox" id="paradoxBox">
+        <div class="px-k">Trh tím výrobní část oceňuje na</div>
+        <div class="px-v"><span id="pxMult">—</span><small>× EBITDA</small> <small id="pxBn">—</small></div>
+        <div class="px-buy">při výkupu s prémií +<span id="pxP">—</span> % ji stát kupuje za
+          <b><span id="pxBuyMult">—</span>× EBITDA ≈ <span id="pxBuyBn">—</span> mld Kč</b></div>
+        <div class="px-d" id="pxDesc">—</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="sect rise d5">03 · <b>Od kurzu k výkupní ceně</b></div>
+
+  <section class="water rise d5">
+    <div class="wrow">
+      <div class="wlabel"><b>Hodnota DSZS na akcii</b>53 mld × <span id="fM">10,0</span>× − dluh <span id="fD">1,6</span>×, ÷ 538 mil. akcií</div>
+      <div class="wbar-track"><div class="wbar dszs" id="barDszs"></div></div>
+      <div class="wval c-dszs" id="valDszs">— <small>Kč / akcii</small></div>
+    </div>
+    <div class="wrow">
+      <div class="wlabel"><b>+ Výrobní část (dopočet)</b>zbytek kurzu — jádro, uhlí, OZE</div>
+      <div class="wbar-track"><div class="wbar gen" id="barGen"></div></div>
+      <div class="wval c-gen" id="valGen">— <small>Kč / akcii</small></div>
+    </div>
+    <div class="wrow">
+      <div class="wlabel"><b>= Aktuální kurz</b>co dnes platí trh</div>
+      <div class="wbar-track"><div class="wbar mkt" id="barMkt"></div></div>
+      <div class="wval c-mkt" id="valMkt">— <small>Kč / akcii</small></div>
+    </div>
+    <div class="wrow">
+      <div class="wlabel"><b>+ Motivační prémie</b><span id="fP">20</span> % nad kurz</div>
+      <div class="wbar-track"><div class="wbar prem" id="barPrem"></div></div>
+      <div class="wval c-prem" id="valPrem">— <small>Kč / akcii</small></div>
+    </div>
+    <div class="wrow">
+      <div class="wlabel"><b>= Výkupní cena</b>nabídka minoritářům</div>
+      <div class="wbar-track"><div class="wbar final" id="barFinal"></div></div>
+      <div class="wval c-final" id="valFinal">— <small>Kč / akcii</small></div>
+    </div>
+  </section>
+
+  <div class="sect rise d6">04 · <b>Financování buybacku z prodeje 49% DSZS</b></div>
+
+  <section class="fin rise d6">
+    <div class="fin-rows">
+      <div class="fin-cell">
+        <div class="fk">Výtěžek za 49 % DSZS</div>
+        <div class="fv c-cash" id="finCash">—</div>
+        <div class="fd">hotovost pro ČEZ z prodeje podílu investorům</div>
+      </div>
+      <div class="fin-cell">
+        <div class="fk">Náklad výkupu minoritářů</div>
+        <div class="fv c-cost" id="finCost">—</div>
+        <div class="fd">výkupní cena × 162,6 mil. minoritních akcií</div>
+      </div>
+    </div>
+    <div class="cov-track"><div class="cov-bar" id="covBar"></div></div>
+    <div class="cov-line"><span>krytí nákladu výkupu výtěžkem</span><b id="covPct">—</b></div>
+    <div class="fin-verdict" id="covNote">—</div>
+  </section>
+
+  <div class="sect rise d6">05 · <b>Srovnání s trhem</b></div>
+
+  <section class="axis-box rise d6">
+    <div style="font-size:13.5px;color:var(--ink-dim)">
+      Modelová výkupní cena <span style="color:var(--accent)">●</span> proti aktuálnímu kurzu
+      <span style="color:var(--ink)">●</span> a 52týdennímu rozpětí akcie ČEZ
+      <span id="bandRange" class="band-range"></span>.
+    </div>
+    <div class="axis" id="axis">
+      <div class="axis-line"></div>
+      <div class="axis-band" id="band"></div>
+      <div class="marker mkt below" id="mkMkt">
+        <div class="tick"></div>
+        <div class="mlabel">kurz</div>
+        <div class="mprice" id="mkMktP">—</div>
+      </div>
+      <div class="marker buyout" id="mkBuy">
+        <div class="mlabel">výkup</div>
+        <div class="mprice" id="mkBuyP">—</div>
+        <div class="tick"></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="sect rise d7">06 · <b>Předpoklady modelu</b></div>
+
+  <section class="rise d7">
+    <div class="assume">
+      <div class="acard">
+        <div class="ak">EBITDA DSZS</div>
+        <div class="av">53 mld Kč</div>
+        <div class="ad">distribuce + prodej + GasNet, 39&nbsp;% skupiny (2025)</div>
+      </div>
+      <div class="acard">
+        <div class="ak">EBITDA výroby</div>
+        <div class="av">84 mld Kč</div>
+        <div class="ad">jádro, uhlí, OZE a ostatní — zbytek skupiny</div>
+      </div>
+      <div class="acard">
+        <div class="ak">Akcie celkem</div>
+        <div class="av">537,99 mil.</div>
+        <div class="ad">základní kapitál ČEZ, nominál 100&nbsp;Kč</div>
+      </div>
+      <div class="acard">
+        <div class="ak">Podíl státu</div>
+        <div class="av">69,78 %</div>
+        <div class="ad">ČR přes Ministerstvo financí; minoritě zbývá 30,22&nbsp;%</div>
+      </div>
+    </div>
+    <div class="method">
+      <b style="color:var(--ink);font-weight:500">Metodika</b> (kompletní vzorce v patičce):
+      Slidery ocenění DSZS určují, jaký kus dnešního kurzu zabírá distribuce a&nbsp;prodej.
+      Zbytek je vše, co trh přiznává výrobní části — a&nbsp;právě jeho přepočet na násobek
+      EBITDA (84&nbsp;mld) ukazuje paradox: výroba s&nbsp;většinou zisku skupiny vychází na
+      zlomek ocenění distribučních aktiv. Výkup za kurz + prémii pak znamená, že stát
+      získává výrobu blízko tohoto implicitního ocenění. Sekce&nbsp;04 porovnává výtěžek
+      z&nbsp;prodeje 49&nbsp;% DSZS s&nbsp;nákladem na výkup všech minoritních akcií.
+      <br><br>
+      <b style="color:var(--ink);font-weight:500">Kalibrace na zdroje:</b>
+      distribuční firmy se oceňují ~10–12× EBITDA, integrované skupiny ~6×. Novější mediální
+      odhady výtěžku 130–150&nbsp;mld&nbsp;Kč odpovídají ~7× EBITDA. Prémie: u&nbsp;EDF (2022)
+      dostali minoritáři +53&nbsp;% nad kurz před oznámením; české analýzy zmiňují obvyklých
+      20–30&nbsp;%.
+    </div>
+  </section>
+
+  <footer class="rise d7">
+    <div class="formulas">
+      <div class="fx-t">Vzorce modelu</div>
+      <div class="fx-grid">
+        <span class="fx-n"><b>DSZS na akcii</b></span>
+        <span>= (53 mld × násobek − 53 mld × dluh) ÷ 537 989 759 akcií</span>
+
+        <span class="fx-n"><i>výroba na akcii</i></span>
+        <span>= kurz − <b>DSZS na akcii</b> <span class="fx-c">(dopočet: zbytek kurzu)</span></span>
+
+        <span class="fx-n"><i>násobek EBITDA výroby</i></span>
+        <span>= (<i>výroba na akcii</i> × 537 989 759) ÷ 84 mld</span>
+        <span class="fx-note">84 mld = EBITDA jen výrobní části (137 mld skupiny − 53 mld DSZS)</span>
+
+        <span class="fx-n fx-gap"><em>výkupní cena</em></span>
+        <span class="fx-gap">= kurz × (1 + prémie)</span>
+
+        <span class="fx-n fx-gap">výtěžek z prodeje 49 %</span>
+        <span class="fx-gap">= 49 % × (53 mld × násobek − 53 mld × dluh)</span>
+
+        <span class="fx-n">náklad výkupu</span>
+        <span>= <em>výkupní cena</em> × 162,6 mil. akcií <span class="fx-c">(minoritních 30,22 % z celku)</span></span>
+      </div>
+    </div>
+    Zdroje: <a href="https://ekonomickydenik.cz/zakaznicky-cez-400-az-530-miliard/" target="_blank" rel="noopener">Ekonomický
+    deník — „Zákaznický" ČEZ: 400 až 530 miliard</a> ·
+    <a href="https://www.mesec.cz/clanky/stat-chce-ziskat-cez-pod-kontrolu-minoritarum-tim-muze-vykup-prinest-premii/" target="_blank" rel="noopener">Měšec.cz — výkup může přinést prémii</a> ·
+    <a href="https://www.investicniweb.cz/aktuality/323250-prodej-podilu-ve-vyclenene-casti-cez-muze-vydelat-na-zestatneni-vyroby-energeticke-skupiny" target="_blank" rel="noopener">Investiční web — prodej zaplatí zestátnění</a> ·
+    <a href="https://www.euronews.com/next/2023/01/21/edf-nationalisation" target="_blank" rel="noopener">Euronews — EDF squeeze-out</a> ·
+    <a href="https://www.cez.cz/cs/pro-investory/akcie/struktura-akcionaru" target="_blank" rel="noopener">ČEZ — struktura akcionářů</a> ·
+    kurz: Yahoo Finance (CEZ.PR, zpožděná data).
+    <div class="disclaimer">⚠ Modelová pomůcka, nikoli investiční doporučení. Parametry transakce nejsou schváleny a mohou se zásadně lišit.</div>
+  </footer>
+
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  /* ── theme: saved choice > system preference, manual toggle ──── */
+  let savedTheme = null;
+  try { savedTheme = localStorage.getItem('cez-theme'); } catch (e) {}
+  const prefersLight = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
+  if (savedTheme === 'light' || (!savedTheme && prefersLight)) document.documentElement.classList.add('light');
+  const themeBtn = document.getElementById('themeBtn');
+  const setThemeIcon = () => {
+    themeBtn.textContent = document.documentElement.classList.contains('light') ? '☾' : '☀';
+  };
+  themeBtn.addEventListener('click', () => {
+    const isLight = document.documentElement.classList.toggle('light');
+    try { localStorage.setItem('cez-theme', isLight ? 'light' : 'dark'); } catch (e) {}
+    setThemeIcon();
+  });
+  setThemeIcon();
+
+  /* ── constants from the article & public filings ─────────────── */
+  const EBITDA_BN = 53;                 // DSZS EBITDA, bn CZK
+  const EBITDA_GEN_BN = 84;             // generation & rest EBITDA, bn CZK
+  const SHARES_TOTAL = 537989759;       // CEZ shares outstanding
+  const STATE_STAKE = 0.6978;           // Ministry of Finance stake
+  const SOLD_STAKE = 0.49;              // share of DSZS being sold
+  const MINORITY_SHARES = SHARES_TOTAL * (1 - STATE_STAKE);
+  const BAR_REF_CZK = 2200;             // waterfall scale anchor, CZK/share
+  const FALLBACK_PRICE = 1247;          // CEZ.PR close, 2026-06-12
+  const YAHOO_URL = 'https://query1.finance.yahoo.com/v8/finance/chart/CEZ.PR?interval=1d&range=1d';
+
+  const state = {
+    m: 10.0,                            // DSZS EV/EBITDA multiple
+    d: 1.6,                             // debt transferred, x EBITDA
+    p: 20,                              // control premium over market price, %
+    price: FALLBACK_PRICE,
+    priceMode: 'fallback',              // loading | live | manual | fallback
+    meta: null,                         // { time, low52, high52 }
+  };
+
+  /* ── formatting helpers ──────────────────────────────────────── */
+  const fmtInt = new Intl.NumberFormat('cs-CZ', { maximumFractionDigits: 0 });
+  const fmt1 = new Intl.NumberFormat('cs-CZ', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  /* cs-CZ groups thousands with a full no-break space — too wide in mono,
+     so swap it for a narrow no-break space (U+202F) */
+  const czk = v => fmtInt.format(Math.round(v)).replace(/[\s ]/g, ' ');
+  const bn = v => fmt1.format(v);
+
+  const $ = id => document.getElementById(id);
+
+  /* ── core model ──────────────────────────────────────────────── */
+  /* DSZS value comes from the sliders; generation value is the     */
+  /* RESIDUAL of the market price. Buyout = price × (1 + premium).  */
+  function compute(m, d, p, price) {
+    const ev = EBITDA_BN * m;
+    const debt = EBITDA_BN * d;
+    const equity = ev - debt;                              // DSZS equity, bn
+    const dszsPS = equity * 1e9 / SHARES_TOTAL;            // CZK per share
+    const genPS = price - dszsPS;                          // residual per share
+    const genBn = genPS * SHARES_TOTAL / 1e9;              // residual, bn
+    const genMult = genBn / EBITDA_GEN_BN;                 // implied EBITDA multiple
+    const finalPS = price * (1 + p / 100);                 // buyout offer
+    const genAtBuyoutBn = (finalPS - dszsPS) * SHARES_TOTAL / 1e9;
+    const genAtBuyoutMult = genAtBuyoutBn / EBITDA_GEN_BN; // multiple paid at buyout
+    const cash = equity * SOLD_STAKE;                      // proceeds from 49 %, bn
+    const cost = finalPS * MINORITY_SHARES / 1e9;          // buyout cost, bn
+    return { ev, debt, equity, dszsPS, genPS, genBn, genMult, finalPS, genAtBuyoutBn, genAtBuyoutMult, cash, cost };
+  }
+
+  /* ── scenario presets calibrated to published estimates ──────── */
+  const PRESETS = [
+    { name: 'Tržní skepse',  m: 7,  d: 1.6, p: 0 },   // ~140bn proceeds per HN/Inv. web
+    { name: 'Konzervativní', m: 10, d: 1.6, p: 20 },  // 10x standard, usual premium low end
+    { name: 'Střední',       m: 11, d: 2.1, p: 30 },
+    { name: 'EDF scénář',    m: 12, d: 1.6, p: 53 },  // EDF minority buyout premium
+  ];
+
+  function buildPresets() {
+    const host = $('presets');
+    PRESETS.forEach((p, i) => {
+      const el = document.createElement('button');
+      el.className = 'preset';
+      el.id = 'preset' + i;
+      el.innerHTML = `
+        <div class="preset-name">${p.name}</div>
+        <div class="preset-params">DSZS ${fmt1.format(p.m)}× · dluh ${fmt1.format(p.d)}× · +${p.p} %</div>
+        <div class="preset-price" id="presetPrice${i}">—</div>`;
+      el.addEventListener('click', () => {
+        state.m = p.m; state.d = p.d; state.p = p.p;
+        $('mSlider').value = p.m; $('dSlider').value = p.d; $('pSlider').value = p.p;
+        render();
+      });
+      host.appendChild(el);
+    });
+  }
+
+  /* ── render ──────────────────────────────────────────────────── */
+  function sliderFill(input) {
+    const min = +input.min, max = +input.max, v = +input.value;
+    input.style.setProperty('--fill', ((v - min) / (max - min) * 100) + '%');
+  }
+
+  function render() {
+    const r = compute(state.m, state.d, state.p, state.price);
+
+    $('mVal').textContent = fmt1.format(state.m);
+    $('dVal').textContent = fmt1.format(state.d);
+    $('pVal').textContent = state.p;
+    $('fM').textContent = fmt1.format(state.m);
+    $('fD').textContent = fmt1.format(state.d);
+    $('fP').textContent = state.p;
+    ['mSlider', 'dSlider', 'pSlider'].forEach(id => sliderFill($(id)));
+
+    /* hero */
+    $('buyout').textContent = czk(r.finalPS);
+    $('breakdown').innerHTML =
+      'kurz <b>' + czk(state.price) + ' Kč</b> + prémie ' + state.p +
+      ' % (+' + czk(r.finalPS - state.price) + ' Kč)';
+    const gv = $('genValue');
+    $('paradoxVal').textContent = fmt1.format(r.genAtBuyoutMult);
+    if (r.genAtBuyoutMult >= 0) {
+      gv.classList.remove('neg');
+      $('paradoxSub').innerHTML = '≈ <b>' + czk(r.genAtBuyoutBn) +
+        ' mld Kč</b> za aktiva s 84 mld EBITDA';
+    } else {
+      gv.classList.add('neg');
+      $('paradoxSub').textContent = 'výkupní cena nepokryje ani samotnou DSZS';
+    }
+
+    /* pie: share of DSZS in today's market price */
+    const shareRaw = r.dszsPS / state.price;
+    const share = Math.max(0, Math.min(1, shareRaw));
+    $('pie').style.setProperty('--share', (share * 100).toFixed(1) + '%');
+    $('piePct').textContent = Math.round(shareRaw * 100) + ' %';
+    $('piePrice').textContent = czk(state.price) + ' Kč';
+    $('pieDszs').textContent = czk(r.dszsPS) + ' Kč (' + Math.round(shareRaw * 100) + ' %)';
+    $('pieGen').textContent = czk(r.genPS) + ' Kč (' + Math.round((1 - shareRaw) * 100) + ' %)';
+
+    /* paradox readout */
+    const pb = $('paradoxBox');
+    $('pxMult').textContent = fmt1.format(r.genMult);
+    $('pxBn').textContent = '≈ ' + czk(r.genBn) + ' mld Kč';
+    $('pxP').textContent = state.p;
+    $('pxBuyMult').textContent = fmt1.format(r.genAtBuyoutMult);
+    $('pxBuyBn').textContent = czk(r.genAtBuyoutBn);
+    if (r.genPS >= 0) {
+      pb.className = 'paradox';
+      $('pxDesc').innerHTML = 'Temelín, Dukovany, uhelné elektrárny i OZE — <em>61 % zisku skupiny</em>.';
+    } else {
+      pb.className = 'paradox neg';
+      $('pxDesc').innerHTML = 'Hodnota DSZS sama <em style="color:var(--red)">převyšuje celý kurz</em> — ' +
+        'trh při tomto ocenění dává výrobě zápornou hodnotu.';
+    }
+
+    /* per-share waterfall */
+    const w = v => Math.max(0, v / BAR_REF_CZK * 100) + '%';
+    $('barDszs').style.width = w(r.dszsPS);
+    $('barGen').style.left = w(Math.min(r.dszsPS, state.price));
+    $('barGen').style.width = w(r.genPS);
+    $('barMkt').style.width = w(state.price);
+    $('barPrem').style.left = w(state.price);
+    $('barPrem').style.width = w(r.finalPS - state.price);
+    $('barFinal').style.width = w(r.finalPS);
+    $('valDszs').innerHTML = czk(r.dszsPS) + ' <small>Kč / akcii</small>';
+    $('valGen').innerHTML = (r.genPS >= 0 ? '+' : '−') + czk(Math.abs(r.genPS)) + ' <small>Kč / akcii</small>';
+    $('valMkt').innerHTML = czk(state.price) + ' <small>Kč / akcii</small>';
+    $('valPrem').innerHTML = '+' + czk(r.finalPS - state.price) + ' <small>Kč / akcii</small>';
+    $('valFinal').innerHTML = czk(r.finalPS) + ' <small>Kč / akcii</small>';
+
+    /* financing check */
+    $('finCash').textContent = bn(r.cash) + ' mld Kč';
+    $('finCost').textContent = bn(r.cost) + ' mld Kč';
+    const cov = r.cash / r.cost;
+    $('covBar').style.width = Math.min(100, cov * 100) + '%';
+    $('covBar').style.background = cov >= 1
+      ? 'linear-gradient(90deg, #2c8f72, var(--teal))'
+      : (cov >= 0.75
+        ? 'linear-gradient(90deg, #b98430, var(--gold))'
+        : 'linear-gradient(90deg, #a33, var(--red))');
+    $('covPct').textContent = Math.round(cov * 100) + ' %';
+    $('covPct').style.color = cov >= 1 ? 'var(--teal)' : (cov >= 0.75 ? 'var(--gold)' : 'var(--red)');
+    const covNote = $('covNote');
+    if (cov >= 1) {
+      covNote.className = 'fin-verdict ok';
+      covNote.innerHTML = 'Výtěžek stačí na celý výkup, rezerva <em>+' + bn(r.cash - r.cost) + ' mld Kč</em>.';
+    } else {
+      covNote.className = 'fin-verdict gap';
+      covNote.innerHTML = 'Výtěžek nestačí — chybí <em>' + bn(r.cost - r.cash) +
+        ' mld Kč</em>, které by ČEZ/stát musel dofinancovat z vlastních zdrojů či dluhu.';
+    }
+
+    /* axis */
+    const pts = [state.price, r.finalPS];
+    if (state.meta) pts.push(state.meta.low52, state.meta.high52);
+    const lo = Math.min(...pts) * 0.93;
+    const hi = Math.max(...pts) * 1.05;
+    const pos = v => ((v - lo) / (hi - lo) * 100) + '%';
+    $('mkMkt').style.left = pos(state.price);
+    $('mkMktP').textContent = czk(state.price) + ' Kč';
+    $('mkBuy').style.left = pos(r.finalPS);
+    $('mkBuyP').textContent = czk(r.finalPS) + ' Kč';
+    const band = $('band'), bandRange = $('bandRange');
+    if (state.meta) {
+      band.style.display = 'block';
+      band.style.left = pos(state.meta.low52);
+      band.style.width = ((state.meta.high52 - state.meta.low52) / (hi - lo) * 100) + '%';
+      bandRange.textContent = '(' + czk(state.meta.low52) + ' – ' + czk(state.meta.high52) + ' Kč)';
+    } else {
+      band.style.display = 'none';
+      bandRange.textContent = '';
+    }
+
+    /* presets: live prices + active highlight */
+    PRESETS.forEach((p, i) => {
+      $('presetPrice' + i).textContent = czk(state.price * (1 + p.p / 100)) + ' Kč';
+      $('preset' + i).classList.toggle('active',
+        Math.abs(p.m - state.m) < 0.001 && Math.abs(p.d - state.d) < 0.001 &&
+        Math.abs(p.p - state.p) < 0.5);
+    });
+  }
+
+  /* ── quote chip ──────────────────────────────────────────────── */
+  function setQuoteUI() {
+    const p = $('pulse'), meta = $('qmeta');
+    $('qprice').textContent = czk(state.price);
+    p.className = 'pulse';
+    if (state.priceMode === 'live') {
+      p.classList.add('live');
+      const t = state.meta && state.meta.time
+        ? new Date(state.meta.time * 1000).toLocaleString('cs-CZ', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })
+        : '';
+      meta.textContent = 'zpožděný kurz · ' + t;
+    } else if (state.priceMode === 'manual') {
+      p.classList.add('manual');
+      meta.textContent = 'kurz zadán ručně';
+    } else if (state.priceMode === 'loading') {
+      meta.textContent = 'načítám kurz…';
+    } else {
+      p.classList.add('err');
+      meta.textContent = 'API nedostupné · záloha k 12. 6. 2026';
+    }
+  }
+
+  function parseYahoo(json) {
+    const m = json && json.chart && json.chart.result && json.chart.result[0] && json.chart.result[0].meta;
+    if (!m || !m.regularMarketPrice) throw new Error('unexpected payload');
+    return {
+      price: m.regularMarketPrice,
+      time: m.regularMarketTime || null,
+      low52: m.fiftyTwoWeekLow || null,
+      high52: m.fiftyTwoWeekHigh || null,
+    };
+  }
+
+  async function fetchWithTimeout(url, ms) {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), ms);
+    try {
+      const res = await fetch(url, { signal: ctl.signal });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return await res.json();
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  async function loadPrice() {
+    state.priceMode = 'loading';
+    setQuoteUI();
+
+    const enc = encodeURIComponent(YAHOO_URL);
+    const attempts = [
+      { name: 'corsproxy.io', run: () => fetchWithTimeout('https://corsproxy.io/?url=' + enc, 9000) },
+      { name: 'allorigins-raw', run: () => fetchWithTimeout('https://api.allorigins.win/raw?url=' + enc, 9000) },
+      {
+        name: 'allorigins-get',
+        run: async () => {
+          const wrap = await fetchWithTimeout('https://api.allorigins.win/get?url=' + enc, 12000);
+          return JSON.parse(wrap.contents);
+        },
+      },
+      { name: 'yahoo-direct', run: () => fetchWithTimeout(YAHOO_URL, 6000) },
+    ];
+
+    for (const a of attempts) {
+      try {
+        const q = parseYahoo(await a.run());
+        state.price = q.price;
+        state.meta = (q.low52 && q.high52) ? { time: q.time, low52: q.low52, high52: q.high52 } : null;
+        state.priceMode = 'live';
+        console.info('[CEZ calc] quote via ' + a.name + ': ' + q.price + ' CZK');
+        setQuoteUI();
+        render();
+        return;
+      } catch (e) {
+        console.warn('[CEZ calc] source failed: ' + a.name, e.message || e);
+      }
+    }
+    state.priceMode = 'fallback';
+    state.price = FALLBACK_PRICE;
+    state.meta = null;
+    setQuoteUI();
+    render();
+  }
+
+  /* ── wiring ──────────────────────────────────────────────────── */
+  $('mSlider').addEventListener('input', e => { state.m = +e.target.value; render(); });
+  $('dSlider').addEventListener('input', e => { state.d = +e.target.value; render(); });
+  $('pSlider').addEventListener('input', e => { state.p = +e.target.value; render(); });
+  $('btnRefresh').addEventListener('click', loadPrice);
+  $('btnEdit').addEventListener('click', () => {
+    const row = $('editRow');
+    row.classList.toggle('open');
+    if (row.classList.contains('open')) { $('editInput').value = Math.round(state.price); $('editInput').focus(); }
+  });
+  const applyManual = () => {
+    const v = parseFloat($('editInput').value);
+    if (v > 0) {
+      state.price = v;
+      state.priceMode = 'manual';
+      state.meta = null;
+      $('editRow').classList.remove('open');
+      setQuoteUI();
+      render();
+    }
+  };
+  $('btnApply').addEventListener('click', applyManual);
+  $('editInput').addEventListener('keydown', e => { if (e.key === 'Enter') applyManual(); });
+
+  buildPresets();
+  render();
+  setQuoteUI();
+  loadPrice();
+})();
+</script>
+
+</body>
+</html>
