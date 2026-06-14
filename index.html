@@ -332,11 +332,6 @@
     font-variant-numeric: tabular-nums; margin-top: 3px;
   }
   .paradox .px-v small { font-size: 13px; color: var(--ink-dim); font-weight: 400; }
-  .paradox .px-buy {
-    font-size: 12.5px; color: var(--ink-dim); margin-top: 7px; padding-top: 7px;
-    border-top: 1px dashed var(--dash); font-variant-numeric: tabular-nums;
-  }
-  .paradox .px-buy b { font-family: var(--mono); font-weight: 600; color: var(--accent); }
   .paradox .px-d { font-size: 12px; color: var(--ink-faint); margin-top: 6px; line-height: 1.6; }
   .paradox .px-d em { color: var(--teal); font-style: normal; }
   .paradox.neg { border-left-color: var(--red); }
@@ -512,7 +507,7 @@
     <div class="head-top">
     <div>
       <div class="kicker">Interaktivní kalkulačka · červen 2026</div>
-      <h1>Zestátnění ČEZ:<br>co dostane <em>minoritní akcionář</em><br>a za kolik získá výrobu <em>stát</em>?</h1>
+      <h1>Zestátnění ČEZ:<br>co dostane <em>minoritní akcionář</em><br>a za kolik získá celou výrobu <em>stát</em>?</h1>
     </div>
     <div class="quote">
       <div class="quote-label">
@@ -548,7 +543,7 @@
       <div class="hero-breakdown" id="breakdown">—</div>
     </div>
     <div class="hero-col">
-      <div class="hero-label">Stát tím kupuje výrobní část za</div>
+      <div class="hero-label">Stát tím kupuje 30 % výroby za</div>
       <div class="hero-value gen" id="genValue"><span id="paradoxVal">—</span><span class="czk">× EBITDA</span></div>
       <div class="hero-breakdown" id="paradoxSub">—</div>
     </div>
@@ -595,14 +590,12 @@
     <div class="pie-side">
       <div style="font-size:14px;color:var(--ink)">Rozklad aktuální ceny akcie <span id="piePrice" style="font-family:var(--mono);color:var(--ink-dim)">—</span></div>
       <div class="pie-legend">
-        <div class="pl-row"><span class="pl-dot dszs"></span><span>Hodnota DSZS na akcii (dle sliderů)</span><b id="pieDszs">—</b></div>
+        <div class="pl-row"><span class="pl-dot dszs"></span><span>Hodnota DSZS na akcii (dle předpokládaných parametrů transakce)</span><b id="pieDszs">—</b></div>
         <div class="pl-row"><span class="pl-dot gen"></span><span>Zbytek na výrobu a ostatní (dopočet)</span><b id="pieGen">—</b></div>
       </div>
       <div class="paradox" id="paradoxBox">
-        <div class="px-k">Trh tím výrobní část oceňuje na</div>
+        <div class="px-k">Trh tím celou výrobní část oceňuje na</div>
         <div class="px-v"><span id="pxMult">—</span><small>× EBITDA</small> <small id="pxBn">—</small></div>
-        <div class="px-buy">při výkupu s prémií +<span id="pxP">—</span> % ji stát kupuje za
-          <b><span id="pxBuyMult">—</span>× EBITDA ≈ <span id="pxBuyBn">—</span> mld Kč</b></div>
         <div class="px-d" id="pxDesc">—</div>
       </div>
     </div>
@@ -697,8 +690,8 @@
         <div class="ad">jádro, uhlí, OZE a ostatní — zbytek skupiny</div>
       </div>
       <div class="acard">
-        <div class="ak">Akcie celkem</div>
-        <div class="av">537,99 mil.</div>
+        <div class="ak">Akcií celkem</div>
+        <div class="av">537 989 759</div>
         <div class="ad">základní kapitál ČEZ, nominál 100&nbsp;Kč</div>
       </div>
       <div class="acard">
@@ -740,6 +733,13 @@
 
         <span class="fx-n fx-gap"><em>výkupní cena</em></span>
         <span class="fx-gap">= kurz × (1 + prémie)</span>
+
+        <span class="fx-n"><em>cena za 30 % výroby</em></span>
+        <span>= (<em>výkupní cena</em> − <b>DSZS na akcii</b>) × 162 580 506 akcií <span class="fx-c">(minoritních 30,22 %)</span></span>
+
+        <span class="fx-n">EBITDA 30 % výroby</span>
+        <span>= 84 mld × 30,22 % = 25,4 mld</span>
+        <span class="fx-note">násobek EBITDA je stejný pro 30 % i 100 % výroby — poměr (Kč ÷ EBITDA) se velikostí podílu nemění; mění se jen absolutní částka.</span>
 
         <span class="fx-n fx-gap">výtěžek z prodeje 49 %</span>
         <span class="fx-gap">= 49 % × (53 mld × násobek − 53 mld × dluh)</span>
@@ -787,6 +787,7 @@
   const STATE_STAKE = 0.6978;           // Ministry of Finance stake
   const SOLD_STAKE = 0.49;              // share of DSZS being sold
   const MINORITY_SHARES = SHARES_TOTAL * (1 - STATE_STAKE);
+  const EBITDA_GEN_MINORITY_BN = EBITDA_GEN_BN * (1 - STATE_STAKE); // gen EBITDA on the 30.22% the state actually buys
   const BAR_REF_CZK = 2200;             // waterfall scale anchor, CZK/share
   const FALLBACK_PRICE = 1247;          // CEZ.PR close, 2026-06-12
   const YAHOO_URL = 'https://query1.finance.yahoo.com/v8/finance/chart/CEZ.PR?interval=1d&range=1d';
@@ -824,9 +825,10 @@
     const finalPS = price * (1 + p / 100);                 // buyout offer
     const genAtBuyoutBn = (finalPS - dszsPS) * SHARES_TOTAL / 1e9;
     const genAtBuyoutMult = genAtBuyoutBn / EBITDA_GEN_BN; // multiple paid at buyout
+    const genAtBuyoutMinorityBn = (finalPS - dszsPS) * MINORITY_SHARES / 1e9; // price for the 30.22% minority slice of generation
     const cash = equity * SOLD_STAKE;                      // proceeds from 49 %, bn
     const cost = finalPS * MINORITY_SHARES / 1e9;          // buyout cost, bn
-    return { ev, debt, equity, dszsPS, genPS, genBn, genMult, finalPS, genAtBuyoutBn, genAtBuyoutMult, cash, cost };
+    return { ev, debt, equity, dszsPS, genPS, genBn, genMult, finalPS, genAtBuyoutBn, genAtBuyoutMult, genAtBuyoutMinorityBn, cash, cost };
   }
 
   /* ── scenario presets calibrated to published estimates ──────── */
@@ -882,8 +884,8 @@
     $('paradoxVal').textContent = fmt1.format(r.genAtBuyoutMult);
     if (r.genAtBuyoutMult >= 0) {
       gv.classList.remove('neg');
-      $('paradoxSub').innerHTML = '≈ <b>' + czk(r.genAtBuyoutBn) +
-        ' mld Kč</b> za aktiva s 84 mld EBITDA';
+      $('paradoxSub').innerHTML = '≈ <b>' + czk(r.genAtBuyoutMinorityBn) +
+        ' mld Kč</b> za 30 % výroby (' + czk(EBITDA_GEN_MINORITY_BN) + ' mld EBITDA)';
     } else {
       gv.classList.add('neg');
       $('paradoxSub').textContent = 'výkupní cena nepokryje ani samotnou DSZS';
@@ -902,9 +904,6 @@
     const pb = $('paradoxBox');
     $('pxMult').textContent = fmt1.format(r.genMult);
     $('pxBn').textContent = '≈ ' + czk(r.genBn) + ' mld Kč';
-    $('pxP').textContent = state.p;
-    $('pxBuyMult').textContent = fmt1.format(r.genAtBuyoutMult);
-    $('pxBuyBn').textContent = czk(r.genAtBuyoutBn);
     if (r.genPS >= 0) {
       pb.className = 'paradox';
       $('pxDesc').innerHTML = 'Temelín, Dukovany, uhelné elektrárny i OZE — <em>61 % zisku skupiny</em>.';
